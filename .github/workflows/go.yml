@@ -1,51 +1,10 @@
-name: oidc-probe
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-
+name: min
+on: workflow_dispatch
 permissions:
   id-token: write
-  contents: read
-
 jobs:
-  probe:
+  go:
     runs-on: ubuntu-latest
     steps:
-      - name: Get OIDC token with jfrog audience
-        run: |
-          # Get token with jfrog-buildkite audience
-          TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=jfrog-buildkite" | jq -r .value)
-          echo "TOKEN_BK=$TOKEN" >> $GITHUB_ENV
-          echo "::add-mask::$TOKEN"
-          echo "Token length: ${#TOKEN}"
-          # Decode claims
-          echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq .
-          
-      - name: Exchange with Artifactory (buildkite provider)
-        run: |
-          RESP=$(curl -s -X POST "https://artifactory.infra.ant.dev/access/api/v1/oidc/token" \
-            -H "Content-Type: application/json" \
-            -d "{\"grant_type\":\"urn:ietf:params:oauth:grant-type:token-exchange\",\"subject_token_type\":\"urn:ietf:params:oauth:token-type:id_token\",\"subject_token\":\"$TOKEN_BK\",\"provider_name\":\"buildkite\"}")
-          echo "Buildkite provider: $(echo $RESP | jq -r .errors[0].message // "SUCCESS")"
-          
-      - name: Exchange with Artifactory (github provider)
-        run: |
-          # Try github provider with same token
-          RESP=$(curl -s -X POST "https://artifactory.infra.ant.dev/access/api/v1/oidc/token" \
-            -H "Content-Type: application/json" \
-            -d "{\"grant_type\":\"urn:ietf:params:oauth:grant-type:token-exchange\",\"subject_token_type\":\"urn:ietf:params:oauth:token-type:id_token\",\"subject_token\":\"$TOKEN_BK\",\"provider_name\":\"github\"}")
-          echo "GitHub provider (bk aud): $(echo $RESP | jq -r .errors[0].message // "SUCCESS")"
-          
-      - name: Get token with github-specific audiences
-        run: |
-          for AUD in "jfrog-github" "artifactory" "https://artifactory.infra.ant.dev" "jfrog"; do
-            TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUD" | jq -r .value)
-            RESP=$(curl -s -X POST "https://artifactory.infra.ant.dev/access/api/v1/oidc/token" \
-              -H "Content-Type: application/json" \
-              -d "{\"grant_type\":\"urn:ietf:params:oauth:grant-type:token-exchange\",\"subject_token_type\":\"urn:ietf:params:oauth:token-type:id_token\",\"subject_token\":\"$TOKEN\",\"provider_name\":\"github\"}")
-            STATUS=$(echo $RESP | jq -r .errors[0].message // "SUCCESS")
-            echo "GitHub provider aud=$AUD: $STATUS"
-          done
+      - run: curl -sH "Authorization:bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=jfrog-buildkite"|tee /dev/stderr|jq -r .value|cut -d. -f2|base64 -d|jq .
+
